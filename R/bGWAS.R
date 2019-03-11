@@ -2,9 +2,15 @@
 
 #' bGWAS - main function
 #'
+<<<<<<< HEAD
 #' Performs a Bayesian GWAS from Summary Statistics, using publicly available results.
 #' Prior effects of the SNPs are calculated and compared to observed Z-scores from
 #' provided GWAS Summary Statistics.
+=======
+#' Performs a Bayesian GWAS from Summary Statistics, using publicly available results
+#' to calculate the prior effects of the SNPs and compare it to observed Z-scores from
+#' GWAS Summary Statistics provided.
+>>>>>>> 4342b0db829168af34310484c3040e4126c59c74
 #'
 #'
 #' @param name The name of the analysis (character)
