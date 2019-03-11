@@ -2,8 +2,9 @@
 
 #' bGWAS - main function
 #'
-#' Performs a Bayesian GWAS from Summary Statistics, using publicly available results
-#' to calculate the prior effects of the SNPs and compare it to observed z-scores
+#' Performs a Bayesian GWAS from Summary Statistics, using publicly available results.
+#' Prior effects of the SNPs are calculated and compared to observed Z-scores from
+#' provided GWAS Summary Statistics.
 #'
 #'
 #' @param name The name of the analysis (character)
@@ -24,7 +25,7 @@
 #' @param prior_shrinkage The p-value threshold used for shrinkage before calculating the prior,
 #'        should be between \code{MR_threshold} and 1, \code{default=1e-5} (numeric)
 #' @param stop_after_prior A logical indicating if the analysis should be stopped after calculating the prior
-#'        (no BF / P- est\code{TRUE},  \code{default=FALSE}
+#'        (no BF / P-value estimation),  \code{default=FALSE}
 #' @param sign_method The method used to identify significant SNPs, should be \code{"p"} for
 #'        p-value or \code{"fdr"} for false discovery rate, \code{default="p"} (character)
 #' @param sign_thresh The threshold used to identify significant SNPs, \code{default="5e-8"}
@@ -49,11 +50,11 @@
 #' SNPID (rs numbers) should be : \code{rs}, \code{rsid}, \code{snp}, \code{snpid}, \code{rnpid} \cr
 #' A1 should be : \code{a1}, \code{alt}, \code{alts} \cr
 #' A2 should be : \code{a2}, \code{a0}, \code{ref} \cr
-#' Z should be : \code{z}, \code{Z}, \code{zscore} \cr
-#' If Z is not present, it can be calculated from BETA and SE, in this case, a temporary
-#' gzipped file is created and removed after the analysis. \cr
 #' BETA should be : \code{b}, \code{beta}, \code{beta1} \cr
 #' SE should be : \code{se}, \code{std} \cr
+#' Alternatively, Z-scores can be provided:
+#' Z should be : \code{z}, \code{Z}, \code{zscore} \cr
+#' If only Z is present, posterior effects can not be rescaled. \cr
 #' Z-Matrix files, containing Z-scores for all prior GWASs should be downloaded separately
 #' and stored in \code{"~/ZMatrices"} or in the folder specified with the argument
 #' \code{Z_matrices}. \cr
@@ -605,7 +606,7 @@ bGWAS <- function(name,
     if(save_files){
       setwd(InitPath)
     }
-
+    
     ### write log_info File ###
     Time = as.integer((proc.time()-StartTime)[3])
     minutes <- as.integer(trunc(Time/60))
@@ -667,7 +668,7 @@ bGWAS <- function(name,
   if(save_files){
     setwd(InitPath)
   }
-
+  
   
   ### write log_info File ###
   Time = as.integer((proc.time()-StartTime)[3])
