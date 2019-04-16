@@ -2,15 +2,9 @@
 
 #' bGWAS - main function
 #'
-<<<<<<< HEAD
 #' Performs a Bayesian GWAS from Summary Statistics, using publicly available results.
 #' Prior effects of the SNPs are calculated and compared to observed Z-scores from
 #' provided GWAS Summary Statistics.
-=======
-#' Performs a Bayesian GWAS from Summary Statistics, using publicly available results
-#' to calculate the prior effects of the SNPs and compare it to observed Z-scores from
-#' GWAS Summary Statistics provided.
->>>>>>> 4342b0db829168af34310484c3040e4126c59c74
 #'
 #'
 #' @param name The name of the analysis (character)
@@ -52,15 +46,20 @@
 #' @details
 #' \code{Name} and \code{GWAS} are required arguments.
 #' If \code{GWAS} is a path to a file (regular or .gz) or a data.frame, it should contain the following
-#' columns : \cr
+#' columns (upper or lower case accepted): \cr
 #' SNPID (rs numbers) should be : \code{rs}, \code{rsid}, \code{snp}, \code{snpid}, \code{rnpid} \cr
 #' A1 should be : \code{a1}, \code{alt}, \code{alts} \cr
 #' A2 should be : \code{a2}, \code{a0}, \code{ref} \cr
 #' BETA should be : \code{b}, \code{beta}, \code{beta1} \cr
 #' SE should be : \code{se}, \code{std} \cr
 #' Alternatively, Z-scores can be provided:
-#' Z should be : \code{z}, \code{Z}, \code{zscore} \cr
-#' If only Z is present, posterior effects can not be rescaled. \cr
+#' Z should be : \code{z}, \code{zscore} \cr
+#' Note, for rescaling posterior effects (to be comparable to effect sizes BETA), 
+#' minor allele frequency (MAF) as well as sample size (N) are needed. If N is not
+#' provided, it will be approximated using SE. If only Z is present, and sample size
+#' is not provided, or if MAF is not provided, posterior effects will not be rescaled. \cr
+#' MAF (optional) should be : \code{maf}, \code{af}, \code{f} \cr
+#' N (optional) should be : \code{n}, \code{nmiss} \cr
 #' Z-Matrix files, containing Z-scores for all prior GWASs should be downloaded separately
 #' and stored in \code{"~/ZMatrices"} or in the folder specified with the argument
 #' \code{Z_matrices}. \cr
@@ -73,8 +72,8 @@
 #' Use \link{select_priorGWASs}() to automatically select the studies to
 #' be included/excluded when building the prior (argument \code{prior_studies}).
 #'
-#' Be careful, in the results, all the GWAS (conventional + prior) are aligned with UK10K
-#' data for the analysis (some alleles might be swapped when comparing with the initial data)
+# #' Be careful, in the results, all the GWAS (conventional + prior) are aligned with UK10K
+# #' data for the analysis (some alleles might be swapped when comparing with the initial data)
 #'
 #' @return \code{bGWAS}() returns an object of class "bGWAS". \cr
 #' Additionnaly, if \code{save_files=T}, several files are created... \cr
@@ -177,7 +176,7 @@ bGWAS <- function(name,
   tmp = paste0("The name of your analysis is: \"", name, "\". \n")
   log_info = update_log(log_info, tmp, verbose)
   
-  ### create the directory to store the results ###
+  ### check if some analysis with same name run in the same folder, even if save.files=F ###
   Dir = file.path(InitPath, name)
   
   #  if the directory already exists : error
@@ -201,8 +200,8 @@ bGWAS <- function(name,
     }
   } else stop("Z_matrices : wrong format, should be character", call. = FALSE)
   
-  MR_Files =  colnames(data.table::fread(paste0("zcat < ",paste0(Z_matrices, "/ZMatrix_NotImputed.csv.gz")), nrows=0, showProgress = FALSE))[-(1:5)]
-  Prior_Files =  colnames(data.table::fread(paste0("zcat < ",paste0(Z_matrices, "/ZMatrix_Imputed.csv.gz")), nrows=0, showProgress = FALSE))[-(1:5)]
+  MR_Files =  colnames(data.table::fread(cmd=paste0("zcat < ",paste0(Z_matrices, "/ZMatrix_NotImputed.csv.gz")), nrows=0, showProgress = FALSE))[-(1:5)]
+  Prior_Files =  colnames(data.table::fread(cmd=paste0("zcat < ",paste0(Z_matrices, "/ZMatrix_Imputed.csv.gz")), nrows=0, showProgress = FALSE))[-(1:5)]
   List_Files = list_files(Z_matrices=Z_matrices)
   if(!all(MR_Files==Prior_Files)) stop("Z_matrices : columns unconsistent between the two files")
   if(!all(MR_Files==List_Files))  stop("Z_matrices : columns unconsistent with \"AvailableStudies.tsv\"")
@@ -211,151 +210,8 @@ bGWAS <- function(name,
   log_info = update_log(log_info, tmp, verbose)
   
   
-  
-  
-  ## GWAS of interest, should be a path to a GWAS file (format ? .tar.gz or file ?), a data.frame or an ID
-  # TMP_FILE = F # flag : is a temporary file with Z-scores created ??
-  # DO NOT CREATE A TEMP FILE ANYMORE, JUST STORE IT AS A DATA.FRAME
-  if(is.numeric(GWAS)) { # if it is an ID
-    if(!GWAS %in% c(1:length(list_files(Z_matrices = Z_matrices)))) stop("The ID specified as a conventional GWAS is not in the list", call. = FALSE)
-    tmp = paste0("The conventional GWAS used as input is:",
-                 list_files(IDs=GWAS, Z_matrices = Z_matrices), " (ID = ",  GWAS,").  \n")
-    log_info = update_log(log_info, tmp, verbose)
-  } else if(is.character(GWAS)) { # if it is a file
-    # First, does the file exists ?
-    if(!file.exists(GWAS)) stop("GWAS : the file does not exist", call. = FALSE)
-    # Then, check if it is an absolute or a relative path to the file
-    if(!substr(GWAS,1,1) %in% c("/", "~")){ # We should work with absolute path to avoid errors
-      GWAS=paste0(InitPath, "/", GWAS)
-    }
-    tmp = paste0("The conventional GWAS used as input is: \"",
-                 strsplit(GWAS, "/")[[1]][length(strsplit(GWAS, "/")[[1]])], "\".  \n")
-    log_info = update_log(log_info, tmp, verbose)
-    
-    # Check colnames...
-    if(!grepl(".gz", GWAS)){
-      # ...if regular file
-      HeaderGWAS = colnames(data.table::fread(GWAS, nrows = 1, showProgress = FALSE, data.table=F))
-    } else if(grepl(".gz", GWAS)) {
-      # ...if tar.gz
-      if(platform == "unix") HeaderGWAS = colnames(data.table::fread(paste0("zcat < ", GWAS), nrows = 1, showProgress = FALSE, data.table=F))
-    }
-    
-    if(all(!HeaderGWAS %in% c("rsid", "snpid", "snp", "rnpid", "rs"))) stop("GWAS : no SNPID column", call. = FALSE)
-    # how to deal with multiple rsid / snpid columns ???
-    # here, we don't care, we need at least one
-    tmp = paste0("   SNPID column, ok")
-    if(all(!HeaderGWAS %in% c("a1", "alts", "alt"))) stop("GWAS : no ALT column", call. = FALSE)
-    tmp = c(tmp, paste0("ALT column, ok"))
-    if(all(!HeaderGWAS %in% c("a2", "a0", "ref"))) stop("GWAS : no REF column", call. = FALSE)
-    tmp = c(tmp, paste0("REF column, ok"))
-    if(all(!HeaderGWAS %in% c("z", "Z", "zscore"))){
-      # allow for beta + se to calculate Z ??? yes!
-      if(!all(!HeaderGWAS %in% c("b", "beta", "beta1")) & !all(!HeaderGWAS %in% c("se", "std"))){
-        # if beta + se : read the data
-        if(!grepl(".gz", GWAS)){
-          # ...if regular file
-          DataGWAS = data.table::fread(GWAS, showProgress = FALSE, data.table=F)
-        } else if(grepl(".gz", GWAS)) {
-          # ...if tar.gz
-          if(platform == "unix")  DataGWAS = data.table::fread(paste0("zcat < ", GWAS), showProgress = FALSE, data.table=F)
-        }
-        attributes(DataGWAS)$GName = strsplit(GWAS, "/")[[1]][length(strsplit(GWAS, "/")[[1]])]
-        GWAS=DataGWAS
-        rm(DataGWAS)
-        if(is.factor(GWAS[,which(HeaderGWAS %in% c("rsid", "snpid", "snp", "rnpid", "rs"))[1]])){
-          GWAS[,which(HeaderGWAS %in% c("rsid", "snpid", "snp", "rnpid", "rs"))[1]] =
-            as.character(GWAS[,which(HeaderGWAS %in% c("rsid", "snpid", "snp", "rnpid", "rs"))[1]])
-        }
-        if(is.factor(GWAS[,which(HeaderGWAS %in% c("a1", "alts", "alt"))[1]])){
-          GWAS[,which(HeaderGWAS %in% c("a1", "alts", "alt"))[1]]=
-            as.character(GWAS[,which(HeaderGWAS %in% c("a1", "alts", "alt"))[1]])
-        }
-        if(is.factor(GWAS[,which(HeaderGWAS %in% c("a2", "a0", "ref"))[1]])){
-          GWAS[,which(HeaderGWAS %in% c("a2", "a0", "ref"))[1]] =
-            as.character(GWAS[,which(HeaderGWAS %in% c("a2", "a0", "ref"))[1]])
-        }
-        #  beta + se : calculate Z
-        if(is.factor(GWAS[,which(HeaderGWAS %in% c("b", "beta", "beta1"))[1]])){
-          GWAS[,which(HeaderGWAS %in% c("b", "beta", "beta1"))[1]] =
-            as.numeric(GWAS[,which(HeaderGWAS %in% c("b", "beta", "beta1"))[1]])
-        }
-        if(is.factor(GWAS[,which(HeaderGWAS %in% c("se", "std"))[1]])){
-          GWAS[,which(HeaderGWAS %in% c("se", "std"))[1]] =
-            as.numeric(GWAS[,which(HeaderGWAS %in% c("se", "std"))[1]])
-        }
-        GWAS$z = as.numeric(GWAS[,which(HeaderGWAS %in% c("b", "beta", "beta1"))[1]]) /
-          as.numeric(GWAS[,which(HeaderGWAS %in% c("se", "std"))[1]])
-      } else {
-        stop("GWAS : no Z-SCORE column", call. = FALSE)
-      }
-    } else {
-      tmp = c(tmp, paste0("Z column, ok  \n"))
-    }
-    tmp = paste(tmp, collapse= " - ")
-    log_info = update_log(log_info, tmp, verbose)
-    
-    
-  } else if(is.data.frame(GWAS)){ # if data.frame
-    # add attribute GName to the data.frame, to be re-used in other subfunctions
-    attributes(GWAS)$GName =  deparse(substitute(GWAS)) # get the "name" of the object used as an argument in the function
-    # we want a data.frame (tidyr), not a data.table
-    if(data.table::is.data.table(GWAS))
-      GWAS = as.data.frame(GWAS)
-    tmp = paste0("The conventional GWAS used as input the object: \"",
-                 attributes(GWAS)$GName, "\".  \n")
-    log_info = update_log(log_info, tmp, verbose)
-    
-    HeaderGWAS = colnames(GWAS)
-    
-    if(all(!HeaderGWAS %in% c("rsid", "snpid", "snp", "rnpid", "rs"))) stop("GWAS : no SNPID column", call. = FALSE)
-    # how to deal with multiple rsid / snpid columns ???
-    # here, we don't care, we need at least one, so we use the first one
-    if(is.factor(GWAS[,which(HeaderGWAS %in% c("rsid", "snpid", "snp", "rnpid", "rs"))[1]])){
-      GWAS[,which(HeaderGWAS %in% c("rsid", "snpid", "snp", "rnpid", "rs"))[1]] =
-        as.character(GWAS[,which(HeaderGWAS %in% c("rsid", "snpid", "snp", "rnpid", "rs"))[1]])
-    }
-    tmp = paste0("   SNPID column , ok")
-    if(all(!HeaderGWAS %in% c("a1", "alts", "alt"))) stop("GWAS : no ALT column", call. = FALSE)
-    if(is.factor(GWAS[,which(HeaderGWAS %in% c("a1", "alts", "alt"))[1]])){
-      GWAS[,which(HeaderGWAS %in% c("a1", "alts", "alt"))[1]]=
-        as.character(GWAS[,which(HeaderGWAS %in% c("a1", "alts", "alt"))[1]])
-    }
-    tmp = c(tmp, paste0("ALT column, ok"))
-    if(all(!HeaderGWAS %in% c("a2", "a0", "ref"))) stop("GWAS : no REF column", call. = FALSE)
-    if(is.factor(GWAS[,which(HeaderGWAS %in% c("a2", "a0", "ref"))[1]])){
-      GWAS[,which(HeaderGWAS %in% c("a2", "a0", "ref"))[1]] =
-        as.character(GWAS[,which(HeaderGWAS %in% c("a2", "a0", "ref"))[1]])
-    }
-    tmp = c(tmp, paste0("REF column, ok"))
-    if(all(!HeaderGWAS %in% c("z", "Z", "zscore"))){
-      # allow for beta + se to calculate Z
-      if(!all(!HeaderGWAS %in% c("b", "beta", "beta1")) & !all(!HeaderGWAS %in% c("se", "std"))){
-        # if beta + se : calculate Z
-        if(is.factor(GWAS[,which(HeaderGWAS %in% c("b", "beta", "beta1"))[1]])){
-          GWAS[,which(HeaderGWAS %in% c("b", "beta", "beta1"))[1]] =
-            as.numeric(GWAS[,which(HeaderGWAS %in% c("b", "beta", "beta1"))[1]])
-        }
-        if(is.factor(GWAS[,which(HeaderGWAS %in% c("se", "std"))[1]])){
-          GWAS[,which(HeaderGWAS %in% c("se", "std"))[1]] =
-            as.numeric(GWAS[,which(HeaderGWAS %in% c("se", "std"))[1]])
-        }
-        GWAS$z = as.numeric(GWAS[,which(HeaderGWAS %in% c("b", "beta", "beta1"))[1]]) /
-          as.numeric(GWAS[,which(HeaderGWAS %in% c("se", "std"))[1]])
-      } else {
-        stop("GWAS : no Z-SCORE column", call. = FALSE)
-      }
-    } else {
-      if(is.factor(GWAS[,which(HeaderGWAS %in% c("z", "Z", "zscore"))])){
-        GWAS[,which(HeaderGWAS %in% c("z", "Z", "zscore"))] =
-          as.character(unlist(GWAS[,which(HeaderGWAS %in% c("z", "Z", "zscore"))]))
-      }
-      tmp = c(tmp, paste0("Z column, ok  \n"))
-    }
-    
-    tmp = paste(tmp, collapse= " - ")
-    log_info = update_log(log_info, tmp, verbose)
-  } else stop("GWAS : unrecognized format", call. = FALSE)
+  Data = tidy_inputGWAS(GWAS, verbose)
+  log_info = c(log_info, Data$log_info)
   
   tmp = paste0("The analysis will be run in the folder: \"", InitPath, "\".  \n")
   log_info = update_log(log_info, tmp, verbose)
@@ -475,10 +331,10 @@ bGWAS <- function(name,
   if(sign_thresh>1) stop("sign_thresh : a threshold higher than 1 does not make sense", call. = FALSE)
   
   if(sign_method=="p"){
-    tmp = paste0("Significant SNPs will be identified according to p-value. The threshold used is :",
+    tmp = paste0("Significant SNPs will be identified according to p-value. The threshold used is: ",
                  format(sign_thresh, scientific = T), ".  \n")
   } else if(sign_method=="fdr"){
-    tmp = paste0("Significant SNPs will be identified according to FDR. The threshold used is :",
+    tmp = paste0("Significant SNPs will be identified according to FDR. The threshold used is: ",
                  format(sign_thresh, scientific = T), ".  \n")
   }
   log_info = update_log(log_info, tmp, verbose)
@@ -553,7 +409,7 @@ bGWAS <- function(name,
   
   # the "global z_matrix of strong instruments" for all GWASs already exists, just select the studies kept for the prior + prune + add the GWAS of interest
   # makeMR_ZMatrix() create a ZMatrix file and returns the log_info
-  matrix_MR = makeMR_ZMatrix(prior_studies, GWAS, MR_threshold, MR_pruning_dist, MR_pruning_LD, Z_matrices, save_files, verbose)
+  matrix_MR = makeMR_ZMatrix(prior_studies, Data$GWAS, MR_threshold, MR_pruning_dist, MR_pruning_LD, Z_matrices, save_files, verbose)
   log_info = c(log_info,matrix_MR$log_info)
   # here, add potential stop() in function(s) and check for it
   
@@ -588,7 +444,7 @@ bGWAS <- function(name,
   tmp = paste0("> Creating the full Z-Matrix  \n")
   log_info = update_log(log_info, tmp, verbose)
   Studies = select_priorGWASs(include_files=res_MR$studies, Z_matrices = Z_matrices)
-  matrix_all = makeFull_ZMatrix(Studies, GWAS, Z_matrices, save_files, verbose)
+  matrix_all = makeFull_ZMatrix(Studies, Data$GWAS, Z_matrices, save_files, verbose)
   log_info = c(log_info,matrix_all$log_info)
   
   tmp = paste0("> Computing prior  \n")
@@ -651,7 +507,7 @@ bGWAS <- function(name,
   tmp = paste0("> Calculating them for all SNPs  \n")
   log_info = update_log(log_info, tmp, verbose)
   
-  PriorWithBF = request_BFandP(Prior$prior, sign_thresh, use_permutations, save_files, verbose)
+  PriorWithBF = request_BFandP(Data$GWAS, Prior$prior, sign_thresh, use_permutations, Data$rescaling, save_files, verbose)
   log_info = c(log_info, PriorWithBF$log_info)
   
   

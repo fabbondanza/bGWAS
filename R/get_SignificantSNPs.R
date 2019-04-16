@@ -69,7 +69,11 @@ get_significantSNPs <- function(Prior, sign_method="p", sign_thresh=5e-8, res_pr
   if(!is.null(res_pruning_dist)){
     tmp = "# Pruning significant SNPs... \n"
     Log = update_log(Log, tmp, verbose)
-    ToPrune = PriorThr[,c(1,2,3,12)]
+    SNPID = match(colnames(PriorThr),c("snpid", "snp", "rnpid", "rs", "rsid"))
+    SNPID = which(!is.na(SNPID))[1]
+    ToPrune = PriorThr[,SNPID]
+    ToPrune = cbind(ToPrune, PriorThr[,c("UK10K_chr", "UK10K_pos", "BF_P")])
+    ToPrune[,1] = as.character(ToPrune[,1])
     colnames(ToPrune) = c("SNP", "chr_name", "chr_start", "pval.exposure")
     if(res_pruning_LD>0){# LD-pruning
       tmp = paste0("   distance : ", res_pruning_dist, "Kb", " - LD threshold : ", res_pruning_LD, "\n")
@@ -84,7 +88,7 @@ get_significantSNPs <- function(Prior, sign_method="p", sign_thresh=5e-8, res_pr
       Log = update_log(Log, tmp, verbose)
       SNPsToKeep = prune_byDistance(ToPrune, prune.dist=res_pruning_dist, byP=T)
     }
-    PriorThr =  PriorThr[PriorThr$rs %in% SNPsToKeep,]
+    PriorThr =  PriorThr[PriorThr[,SNPID] %in% SNPsToKeep,]
 
     tmp = paste0(format(nrow(PriorThr), big.mark = ",", scientific = F), " SNPs left \n")
     Log = update_log(Log, tmp, verbose)
@@ -106,6 +110,6 @@ get_significantSNPs <- function(Prior, sign_method="p", sign_thresh=5e-8, res_pr
 
   res=list()
   res$log_info = Log
-  res$SNPs = PriorThr$rs
+  res$SNPs = PriorThr[,SNPID] 
   return(res)
 }

@@ -15,7 +15,7 @@
 
 
 
-request_BFandP <- function(Prior, sign_thresh, use_perm = F, save_files=F, verbose=F) {
+request_BFandP <- function(GWASData, Prior, sign_thresh, use_permutations = F, rescaling=F, save_files=F, verbose=F) {
   Log = c()
   tmp = paste0("# Computing observed Bayes Factor for all SNPs... \n")
   Log = update_log(Log, tmp, verbose)
@@ -44,7 +44,7 @@ request_BFandP <- function(Prior, sign_thresh, use_perm = F, save_files=F, verbo
   tmp = "# Computing BF p-values... \n"
   Log = update_log(Log, tmp, verbose)
 
-  if(use_perm){# The true one : calculate BF
+  if(use_permutations){# The true one : calculate BF
     tmp = "   using a permutation approach: \n"
     Log = update_log(Log, tmp, verbose)
 
@@ -271,7 +271,68 @@ request_BFandP <- function(Prior, sign_thresh, use_perm = F, save_files=F, verbo
     Log=c(Log, PVal$log_info)
 
   }
+  
+  # Tidy up data
+  SNPID = match(colnames(GWASData),c("snpid", "snp", "rnpid", "rs", "rsid"))
+  SNPID = which(!is.na(SNPID))[1]
+  ALT = match(colnames(GWASData),c("a1", "alts", "alt"))
+  ALT = which(!is.na(ALT))[1]
+  REF = match(colnames(GWASData),c("a2", "ref", "a0"))
+  REF = which(!is.na(REF))[1]
+  ZSTAT = match(colnames(GWASData),c("z", "Z", "zscore"))
+  ZSTAT = which(!is.na(ZSTAT))[1]
+  if(rescaling){
+    MAF =  match(colnames(GWASData),c("MAF", "AF"))
+    MAF = which(!is.na(MAF))[1]
+    N = match(colnames(GWASData),c("N", "NMISS", "n"))
+    N = which(!is.na(N))[1]
+    if(is.na(N)){
+      SE = match(colnames(GWASData),c("se", "std"))
+      SE = which(!is.na(SE))[1]
+      subset = GWASData[sample(1:nrow(GWASData), 1000),]
+      Nest = median(1/(GWASData[,SE]*2*GWASData[,MAF]*(1-GWASData[,MAF])))
+    }
+  }
+  
+  # keep the SNPs in our Z matrix and order them correctly
+  Prior = Prior[match(GWASData[,SNPID],Prior$rs),]
+  # check alignment
+  aligned = which(GWASData[,ALT] == Prior$alt &
+                    GWASData[,REF] == Prior$ref)
+  swapped = which(GWASData[,REF] == Prior$alt &
+                    GWASData[,ALT] == Prior$ref)
 
+  # prior
+  GWASData[,c("z_prior_estimate", "z_prior_std_error")] = NA
+  GWASData[aligned,"z_prior_estimate"] = Prior[aligned,7]
+  GWASData[swapped,"z_prior_estimate"] = -Prior[swapped,7]
+  GWASData[,"z_prior_std_error"] = Prior[,8]
+  
+  # posterior
+  GWASData[,c("z_posterior_estimate", "z_posterior_std_error")] = NA
+  GWASData[aligned,"z_posterior_estimate"] = Prior[aligned,9]
+  GWASData[swapped,"z_posterior_estimate"] = -Prior[swapped,9]
+  GWASData[,"z_posterior_std_error"] = Prior[,10]
+
+  # if rescaling
+  if(rescaling){
+    if(!is.na(N)){
+      GWASData$beta_posterior_estimate = GWASData$z_posterior_estimate / sqrt(2*GWASData[,MAF]*(1-GWASData[,MAF])*(GWASData$z_posterior_estimate^2 + GWASData[,N]))
+      GWASData$beta_posterior_se = sqrt(GWASData$z_posterior_estimate**2 / (2*GWASData[,MAF]*(1-GWASData[,MAF])*GWASData[,N]))
+    } else {
+      GWASData$beta_posterior_estimate = GWASData$z_posterior_estimate / sqrt(2*GWASData[,MAF]*(1-GWASData[,MAF])*(GWASData$z_posterior_estimate^2 + Nest))
+      GWASData$beta_posterior_se = sqrt(GWASData$z_posterior_estimate**2 / (2*GWASData[,MAF]*(1-GWASData[,MAF])*Nest))
+    }
+  }
+  
+  GWASData[,c("BF", "BF_P")] = Prior[,c("BF", "BF_P")]
+  GWASData[,c("UK10K_chr", "UK10K_pos")] = Prior[,c("chrm", "pos")]
+  
+  
+  
+  
+  
+    
   if(save_files){
     system("rm Prior.csv")
     readr::write_csv(Prior, "PriorBFp.csv")
@@ -286,6 +347,6 @@ request_BFandP <- function(Prior, sign_thresh, use_perm = F, save_files=F, verbo
 
   res=list()
   res$log_info = Log
-  res$SNPs = Prior
+  res$SNPs = GWASData
   return(res)
 }
